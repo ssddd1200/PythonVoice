@@ -7,3 +7,5 @@ pip freeze > package.txt
 ```
 
 使用 pip install -r package.txt 命令安装所需的库
+
+可以使用http，socket进行通信
