@@ -15,13 +15,21 @@ import os
 from PIL import Image, ImageTk
 import time
 import socket
-
+from flask import Flask, request, Response
 
 win = Tk()
 timerStr = StringVar()
 screen_width = win.winfo_screenwidth()
 screen_height = win.winfo_screenheight()
+app = Flask(__name__)
 
+with open('config.ini', 'r') as f:
+    f_list = f.readlines()
+    for i in range(0, len(f_list), 4):
+        if f_list[i].find('config'):
+            main_host = f_list[i + 1].replace("\n", "").split("=")[1]
+            main_post = int(f_list[i + 2].replace("\n", "").split("=")[1])
+            main_type = f_list[i + 3].replace("\n", "").split("=")[1]
 
 # 声音播放
 class Voice(object):
@@ -43,13 +51,9 @@ class SocketClient(object):
     def __init__(self):
         self.buffer_size = 1024
         self.client_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        with open('config.ini', 'r') as f:
-            f_list = f.readlines()
-            for i in range(0, len(f_list), 3):
-                if f_list[i].find('Socket'):
-                    self.host = f_list[i+1].replace("\n", "").split("=")[1]
-                    self.post = int(f_list[i+2].replace("\n", "").split("=")[1])
-                    self.addr = (self.host, self.post)
+        self.host = main_host
+        self.post = main_post
+        self.addr = (main_host, main_post)
 
     def create(self):
         try:
@@ -91,13 +95,9 @@ class SocketServer(object):
     def __init__(self):
         self.server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         self.server_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-        with open('config.ini', 'r') as f:
-            f_list = f.readlines()
-            for i in range(0, len(f_list), 3):
-                if f_list[i].find('Socket'):
-                    self.host = f_list[i+1].replace("\n", "").split("=")[1]
-                    self.post = int(f_list[i+2].replace("\n", "").split("=")[1])
-                    self.addr = (self.host, self.post)
+        self.host = main_host
+        self.post = main_post
+        self.addr = (main_host, main_post)
         self.server_socket.bind(self.addr)
         self.server_socket.listen(10)
         self.server_socket.setblocking(1)
@@ -201,6 +201,21 @@ class SocketServer(object):
         conn.sendall(msg)
         return True
 
+@app.route('/', methods=['GET'])
+def getHttpStatus():
+    json_data = json.dumps({'appcode': 1, 'datebuffer': "running success"})
+    result = Response(response=json_data, content_type='application/json')
+    return result
+
+@app.route('/getMsg', methods=['POST'])
+def getMsg():
+    data = request.data
+    j_data = json.loads(data)
+    s_data = insertTab(j_data)
+    Voice(s_data).play()
+    json_data = json.dumps({'appcode': 1, 'datebuffer': "ok"})
+    result = Response(response=json_data, content_type='application/json')
+    return result
 
 class WebSocketThread(threading.Thread):
     def __init__(self):
@@ -210,7 +225,12 @@ class WebSocketThread(threading.Thread):
         self._stop_event = threading.Event()
 
     def run(self):
-        sock = SocketServer()
+        if main_type == 'http':
+            app.run(host=main_host, port=main_post)
+        elif main_type == 'socket':
+            sock = SocketServer()
+        else:
+            showerror("错误", "运行环境参数出错")
 
     def stop(self):
         self._stop_event.set()
