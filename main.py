@@ -21,30 +21,43 @@ win = Tk()
 timerStr = StringVar()
 screen_width = win.winfo_screenwidth()
 screen_height = win.winfo_screenheight()
+tab_line = (screen_height - 110 - 50) / 80
 app = Flask(__name__)
+
 
 with open('config.ini', 'r') as f:
     f_list = f.readlines()
-    for i in range(0, len(f_list), 4):
+    for i in range(0, len(f_list), 5):
         if f_list[i].find('config'):
             main_host = f_list[i + 1].replace("\n", "").split("=")[1]
             main_post = int(f_list[i + 2].replace("\n", "").split("=")[1])
             main_type = f_list[i + 3].replace("\n", "").split("=")[1]
+            play_count = int(f_list[i + 4].replace("\n", "").split("=")[1])
+
 
 # 声音播放
 class Voice(object):
-    def __init__(self, text):
-        self.playMsg = text
 
-    def play(self):
-        engine = tts.init()
-        engine.setProperty('rate', 110)  # 语音播放语数
-        engine.setProperty('volume', 1)  # 播放音量,0~1
-        voices = engine.getProperty('voices')  # 语言
-        engine.setProperty('voice', voices[0].id)  # 0中文 1英文
-        t = u'%s' % self.playMsg
-        engine.say(t)
-        engine.runAndWait()
+    def __init__(self):
+        self.engine = tts.init(debug=True)
+        self.engine.setProperty('rate', 110)  # 语音播放语数
+        self.engine.setProperty('volume', 1)  # 播放音量,0~1
+        # voices = self.engine.getProperty('voices')  # 语言
+        # self.engine.setProperty('voice', voices[0].id)  # 0中文 1英文
+
+    def play(self, text):
+        t = u'%s' % text
+        self.engine.say(t)
+
+        try:
+            self.engine.startLoop()
+            self.engine.runAndWait()
+            self.engine.endLoop()
+        except Exception as e:
+            print("语音播报繁忙")
+
+
+v_obj = Voice()
 
 
 class SocketClient(object):
@@ -158,7 +171,11 @@ class SocketServer(object):
                     if data_parse != None:
                         data_obj = json.loads(data_parse)
                         voice_str = insertTab(data_obj)
-                        Voice(voice_str).play()
+                        # v_obj.play(voice_str)
+                        # Voice().play(voice_str)
+                        for i in range(0, play_count):
+                            vt = threading.Thread(target=v_obj.play, args=(voice_str,), daemon=True)
+                            vt.start()
                     # print(data_obj["xingming"])
                     # print(data_parse)
                 self.send_msg(conn, bytes("recv: {}".format(data_parse), encoding="utf-8"))
@@ -212,7 +229,10 @@ def getMsg():
     data = request.data
     j_data = json.loads(data)
     s_data = insertTab(j_data)
-    Voice(s_data).play()
+    for i in range(0, play_count):
+        t = threading.Thread(target=v_obj.play, args=(s_data,), daemon=True)
+        t.start()
+    # Voice().play()
     json_data = json.dumps({'appcode': 1, 'datebuffer': "ok"})
     result = Response(response=json_data, content_type='application/json')
     return result
@@ -266,12 +286,10 @@ def getNowTime():
 # 插入表格
 def insertTab(obj_data):
     items = tab.get_children()
-    for item in items:
-        a = tab.item(item)
-        if a["text"] == obj_data['zhenshi']:
-            tab.delete(item)
     xm = obj_data['xingming'][0:1]+'*'*(len(obj_data['xingming'])-1)
-    tab.insert("", 'end', value=(obj_data['jiuzhenh'], xm, obj_data['keshi'], obj_data['yisheng'], obj_data['zhenshi']), text=obj_data['zhenshi'])
+    tab.insert("", 'end', value=(obj_data['jiuzhenh'], xm, obj_data['keshi'], obj_data['zhenshi']), text=obj_data['zhenshi'])
+    if len(items) > tab_line - 1:
+        tab.delete(items[0])
     return '请%s%s到%s诊室就诊' % (obj_data['jiuzhenh'], obj_data['xingming'], obj_data['zhenshi'])
 
 
@@ -317,17 +335,17 @@ if __name__ == '__main__':
     tab.place(x=0, y=110, width=screen_width, height=screen_height - 110 - 50)
 
     # 定义列
-    tab["columns"] = ("就诊号", "姓名", "科室", "医生", "诊室")
-    tab.column("就诊号", width=int(screen_width * 0.15), anchor="center")
+    tab["columns"] = ("就诊号", "姓名", "科室", "诊室")
+    tab.column("就诊号", width=int(screen_width * 0.3), anchor="center")
     tab.column("姓名", width=int(screen_width * 0.25), anchor="center")
-    tab.column("科室", width=int(screen_width * 0.2), anchor="center")
-    tab.column("医生", width=int(screen_width * 0.2), anchor="center")
+    tab.column("科室", width=int(screen_width * 0.25), anchor="center")
+    # tab.column("医生", width=int(screen_width * 0.2), anchor="center")
     tab.column("诊室", width=int(screen_width * 0.2), anchor="center")
     # 设置表头
     tab.heading("就诊号", text="就诊号")
     tab.heading("姓名", text="姓名")
     tab.heading("科室", text="科室")
-    tab.heading("医生", text="医生")
+    # tab.heading("医生", text="医生")
     tab.heading("诊室", text="诊室")
 
     Label(win, text='温馨提醒：请保持安静，耐心等待', background='lightcyan', font=('Microsoft YaHei', 16), fg='darkgray')\
